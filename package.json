@@ -1,0 +1,39 @@
+{
+  "name": "email-sdk",
+  "version": "0.1.0",
+  "description": "Provider-agnostic email SDK with queue, retry, fallback, and circuit breaker.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "example:basic": "tsx examples/basic-usage.ts",
+    "example:fallback": "tsx examples/with-fallback.ts",
+    "example:bulk": "tsx examples/bulk-send.ts"
+  },
+  "keywords": [
+    "email",
+    "sdk",
+    "typescript",
+    "queue",
+    "retry"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@aws-sdk/client-ses": "^3.914.0",
+    "@sendgrid/mail": "^8.1.6",
+    "handlebars": "^4.7.8",
+    "mustache": "^4.2.0",
+    "nodemailer": "^7.0.6"
+  },
+  "devDependencies": {
+    "@types/mustache": "^4.2.6",
+    "@types/node": "^24.6.0",
+    "@types/nodemailer": "^8.0.0",
+    "tsx": "^4.20.6",
+    "typescript": "^6.0.2",
+    "vitest": "^3.2.4"
+  }
+}
