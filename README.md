@@ -1,5 +1,3 @@
-# Email SDK
-
 TypeScript Email SDK implementing the mandatory high-level system design concepts from your PRD.
 
 ## Run
@@ -23,3 +21,8 @@ TypeScript Email SDK implementing the mandatory high-level system design concept
 - `2.8 Observer`: `EmailEventEmitter`, `ConsoleLogger`, `FileLogger` with JSON logs
 - `2.9 DI/IoC`: constructor injection in `EmailSDK`, fluent wiring in `SDKBuilder`
 - `2.10 Analytics`: `MetricsCollector`, `HealthChecker`, `sdk.getStats()`, `sdk.healthCheck()`
+
+System Architecture Diagram
+
+<img width="488" height="867" alt="Screenshot 2026-04-09 at 10 11 21 AM" src="https://github.com/user-attachments/assets/b2e4a05b-ab2c-4b1a-883c-cf585ea7ab2b" />
+
