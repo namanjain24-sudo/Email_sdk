@@ -22,7 +22,7 @@ TypeScript Email SDK implementing the mandatory high-level system design concept
 - `2.9 DI/IoC`: constructor injection in `EmailSDK`, fluent wiring in `SDKBuilder`
 - `2.10 Analytics`: `MetricsCollector`, `HealthChecker`, `sdk.getStats()`, `sdk.healthCheck()`
 
-System Architecture Diagram
+System Architecture Diagram :
 
-<img width="488" height="867" alt="Screenshot 2026-04-09 at 10 11 21 AM" src="https://github.com/user-attachments/assets/b2e4a05b-ab2c-4b1a-883c-cf585ea7ab2b" />
 
+<img width="473" height="862" alt="Screenshot 2026-04-09 at 12 06 11 PM" src="https://github.com/user-attachments/assets/fce5784f-ad7d-4c33-81ba-0ec0b605d298" />
