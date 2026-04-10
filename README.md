@@ -145,6 +145,7 @@ TEMPLATES
 ```
 
 System Architecture Diagram :
+
 <img width="473" height="862" alt="Screenshot 2026-04-09 at 12 06 11 PM" src="https://github.com/user-attachments/assets/fce5784f-ad7d-4c33-81ba-0ec0b605d298" />
 
 
