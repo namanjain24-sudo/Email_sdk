@@ -30,3 +30,8 @@ System Architecture Diagram :
 
 use case diag
 <img width="1406" height="1498" alt="image" src="https://github.com/user-attachments/assets/76115d08-d478-4b23-a3f3-a1519f9e4ce9" />
+
+
+UML Sequence Diagram
+
+<img width="926" height="812" alt="Screenshot 2026-04-10 at 11 38 39 AM" src="https://github.com/user-attachments/assets/252f8397-9032-4b97-a25d-4ddbac4ff84d" />
