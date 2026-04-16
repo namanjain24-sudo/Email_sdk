@@ -5,7 +5,35 @@ import { AwsSesProvider, AwsSesProviderConfig } from "./AwsSesProvider";
 import { SendGridProvider, SendGridProviderConfig } from "./SendGridProvider";
 import { MockProvider, MockProviderOptions } from "./MockProvider";
 
+/**
+ * EmailProviderFactory - Factory pattern for creating email provider instances.
+ * 
+ * Decouples provider creation from consumer code. Handles type-based
+ * instantiation and configuration routing for all supported providers.
+ * 
+ * Supported provider types:
+ * - "smtp": SMTP for standard email sending
+ * - "ses": AWS SES for AWS-integrated sending
+ * - "sendgrid": SendGrid API for reliable delivery
+ * - "mock": Mock provider for testing
+ */
 export class EmailProviderFactory {
+  /**
+   * Creates a provider instance based on configuration.
+   * 
+   * Routes to appropriate provider class constructor with type-cast
+   * configuration. Defaults to MockProvider for unknown types.
+   * 
+   * @param config - Provider configuration including type and options
+   * @returns Instantiated provider implementing IEmailProvider
+   * 
+   * @example
+   * const provider = EmailProviderFactory.create({
+   *   type: 'sendgrid',
+   *   options: { apiKey: 'sg_...' },
+   *   name: 'sendgrid-main'
+   * });
+   */
   public static create(config: ProviderConfig): IEmailProvider {
     switch (config.type) {
       case "smtp":
