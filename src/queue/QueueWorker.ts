@@ -2,6 +2,9 @@ import { DeliveryEngine } from "../delivery/DeliveryEngine";
 import { EmailQueue } from "./EmailQueue";
 import { SendResult } from "../types/SendResult";
 import { DLQHandler } from "./DLQHandler";
+import { EmailStatus } from "../types/EmailStatus";
+import { ProviderError } from "../errors/ProviderError";
+import { EmailEventEmitter } from "../events/EmailEventEmitter";
 
 /**
  * QueueWorker - Background worker that processes emails from the queue.
@@ -16,6 +19,7 @@ import { DLQHandler } from "./DLQHandler";
 export class QueueWorker {
   private running = false;
   private loops: Promise<void>[] = [];
+  private readonly inFlight = new Set<Promise<unknown>>();
 
   /**
    * Constructs a QueueWorker with configured delivery pipeline.
@@ -30,6 +34,7 @@ export class QueueWorker {
     private readonly queue: EmailQueue,
     private readonly deliveryEngine: DeliveryEngine,
     private readonly dlq: DLQHandler,
+    private readonly eventEmitter: EmailEventEmitter,
     private readonly concurrency: number,
     private readonly pollIntervalMs: number
   ) {}
@@ -65,6 +70,7 @@ export class QueueWorker {
   public async stop(): Promise<void> {
     this.running = false;
     await Promise.all(this.loops);
+    await Promise.allSettled([...this.inFlight]);
     this.loops = [];
   }
 
@@ -84,18 +90,69 @@ export class QueueWorker {
     onProcessed: (result: SendResult) => void,
     onError: (error: unknown) => void
   ): Promise<void> {
+    let emptyBackoffMs = Math.min(this.pollIntervalMs, 100);
     while (this.running) {
-      const job = this.queue.dequeue();
+      const job = await this.queue.dequeue();
       if (!job) {
-        await this.sleep(this.pollIntervalMs);
+        emptyBackoffMs = Math.min(this.pollIntervalMs, Math.max(10, emptyBackoffMs * 2));
+        await this.sleep(emptyBackoffMs);
         continue;
       }
+      emptyBackoffMs = 10;
       try {
-        const result = await this.deliveryEngine.deliver(job);
-        onProcessed(result);
-        job.resolve?.(result);
-      } catch (error) {
+        const work = this.deliveryEngine.deliver(job);
+        this.inFlight.add(work);
+        const decision = await work;
+        this.inFlight.delete(work);
+        if (decision.kind === "sent") {
+          this.eventEmitter.emitSent({
+            messageId: job.id,
+            correlationId: job.correlationId,
+            provider: decision.result.provider,
+            status: EmailStatus.SENT,
+            latencyMs: decision.result.latencyMs,
+            timestamp: new Date().toISOString()
+          });
+          onProcessed(decision.result);
+          job.resolve?.(decision.result);
+          continue;
+        }
+
+        if (decision.kind === "retry") {
+          job.attempts += 1;
+          job.status = EmailStatus.RETRYING;
+          job.nextRetryAt = Date.now() + decision.delayMs;
+          await this.queue.enqueue(job);
+          continue;
+        }
+
+        // Terminal failure: send to DLQ
+        job.attempts += 1;
+        job.status = EmailStatus.DLQ;
         this.dlq.add(job);
+        const error =
+          decision.error ??
+          new ProviderError("Delivery failed", job.correlationId, decision.providerName ?? "unknown", false);
+        this.eventEmitter.emitFailed({
+          messageId: job.id,
+          correlationId: job.correlationId,
+          provider: decision.providerName,
+          status: EmailStatus.FAILED,
+          reason: error instanceof Error ? error.message : "Delivery failed",
+          timestamp: new Date().toISOString()
+        });
+        job.reject?.(error);
+        onError(error);
+      } catch (error) {
+        job.status = EmailStatus.DLQ;
+        this.dlq.add(job);
+        this.eventEmitter.emitFailed({
+          messageId: job.id,
+          correlationId: job.correlationId,
+          status: EmailStatus.FAILED,
+          reason: error instanceof Error ? error.message : "Delivery failed",
+          timestamp: new Date().toISOString()
+        });
         job.reject?.(error);
         onError(error);
       }

@@ -31,8 +31,7 @@ export class FileLogger {
       "email.queued",
       "email.sent",
       "email.failed",
-      "email.retrying",
-      "email.bounced"
+      "email.retrying"
     ];
     for (const eventName of events) {
       emitter.on(eventName, (payload) => {

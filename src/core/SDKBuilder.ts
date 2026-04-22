@@ -18,19 +18,9 @@ import { MetricsCollector } from "../analytics/MetricsCollector";
 import { HealthChecker } from "../analytics/HealthChecker";
 import { TemplateFactory, TemplateEngineType } from "../templates/TemplateFactory";
 import { TemplateCache } from "../templates/TemplateCache";
+import { ValidationError } from "../errors/ValidationError";
+import { randomUUID } from "crypto";
 
-/**
- * SDKBuilder - Builder pattern implementation for configuring and creating EmailSDK instances.
- * 
- * This class provides a fluent API for:
- * - Adding email providers (SMTP, AWS SES, SendGrid, Mock)
- * - Configuring retry policies and fallback behavior
- * - Setting queue, circuit breaker, and rate limiting parameters
- * - Enabling logging and metrics collection
- * - Selecting template engines
- * 
- * Uses the Builder pattern to ensure the SDK is constructed with valid, complete configuration.
- */
 export class SDKBuilder {
   private readonly registry = new ProviderRegistry();
   private readonly providers: IEmailProvider[] = [];
@@ -65,19 +55,8 @@ export class SDKBuilder {
     }
   };
   private templateEngineType: TemplateEngineType = "handlebars";
+  private dlqPersistPath?: string;
 
-  /**
-   * Adds a mock email provider for testing.
-   * 
-   * The mock provider simulates email sending with configurable failure rates and latencies.
-   * Useful for integration testing without hitting real email services.
-   * 
-   * @param name - Provider name (e.g., "mock", "test-provider")
-   * @param options - Configuration for mock behavior
-   * @param options.failureRate - Probability (0-1) of simulating a send failure
-   * @param options.baseLatencyMs - Simulated send latency in milliseconds
-   * @returns This builder instance for method chaining
-   */
   public addMockProvider(name: string, options: MockProviderOptions = {}): SDKBuilder {
     const provider = new MockProvider(name, options);
     this.registry.register(provider);
@@ -85,21 +64,6 @@ export class SDKBuilder {
     return this;
   }
 
-  /**
-   * Adds a real email provider (SMTP, SES, or SendGrid).
-   * 
-   * This registers a production email provider and adds it to the fallback chain.
-   * Multiple providers can be added for redundancy and load distribution.
-   * 
-   * @param type - Provider type: "smtp", "ses", "sendgrid", or "mock"
-   * @param options - Provider-specific configuration (host/port for SMTP, API keys for SES/SendGrid)
-   * @param name - Optional custom name for the provider (defaults to provider type)
-   * @returns This builder instance for method chaining
-   * 
-   * @example
-   * builder.addProvider('smtp', { host: 'localhost', port: 587, secure: false })
-   *        .addProvider('sendgrid', { apiKey: 'sg_...' }, 'sendgrid-primary');
-   */
   public addProvider(type: ProviderConfig["type"], options: Record<string, unknown>, name?: string): SDKBuilder {
     const config: ProviderConfig = { type, options, name };
     const provider = EmailProviderFactory.create(config);
@@ -109,19 +73,6 @@ export class SDKBuilder {
     return this;
   }
 
-  /**
-   * Configures retry policy parameters.
-   * 
-   * Determines how the SDK retries failed emails, including maximum attempts,
-   * delay calculation, and whether to use jitter to prevent thundering herd.
-   * 
-   * @param overrides - Partial retry configuration to override defaults
-   * @param overrides.maxAttempts - Maximum retry attempts (default: 3)
-   * @param overrides.baseDelayMs - Base delay between retries in milliseconds (default: 1000)
-   * @param overrides.maxDelayMs - Maximum delay between retries (default: 30000)
-   * @param overrides.jitter - Whether to add random jitter to delays (default: true)
-   * @returns This builder instance for method chaining
-   */
   public withRetry(overrides: Partial<SDKConfig["retry"]>): SDKBuilder {
     this.config = {
       ...this.config,
@@ -130,18 +81,6 @@ export class SDKBuilder {
     return this;
   }
 
-  /**
-   * Configures the email queue parameters.
-   * 
-   * Controls how emails are buffered and processed, including queue capacity,
-   * concurrency level, and polling frequency for new messages.
-   * 
-   * @param overrides - Partial queue configuration to override defaults
-   * @param overrides.maxSize - Maximum number of emails in queue (default: 10000)
-   * @param overrides.concurrency - Number of concurrent workers (default: 5)
-   * @param overrides.pollIntervalMs - Queue polling interval in milliseconds (default: 100)
-   * @returns This builder instance for method chaining
-   */
   public withQueue(overrides: Partial<SDKConfig["queue"]>): SDKBuilder {
     this.config = {
       ...this.config,
@@ -150,17 +89,6 @@ export class SDKBuilder {
     return this;
   }
 
-  /**
-   * Configures circuit breaker parameters for provider failure isolation.
-   * 
-   * When a provider fails repeatedly, the circuit breaker prevents further requests
-   * temporarily, then gradually allows traffic to resume (half-open state).
-   * 
-   * @param overrides - Partial circuit breaker configuration
-   * @param overrides.failureThreshold - Number of failures before opening circuit (default: 5)
-   * @param overrides.recoveryTimeMs - Time in milliseconds before entering half-open state (default: 60000)
-   * @returns This builder instance for method chaining
-   */
   public withCircuitBreaker(overrides: Partial<SDKConfig["circuitBreaker"]>): SDKBuilder {
     this.config = {
       ...this.config,
@@ -168,18 +96,8 @@ export class SDKBuilder {
     };
     return this;
   }
-  /**
-   * Configures rate limiting parameters to control email send rate.
-   * 
-   * Prevents overwhelming providers with too many concurrent requests using
-   * a token bucket algorithm.
-   * 
-   * @param overrides - Partial rate limit configuration
-   * @param overrides.tokensPerSecond - Send rate in emails per second (default: 100)
-   * @param overrides.burstCapacity - Maximum burst size (default: 200)
-   * @param overrides.mode - "wait" (queue requests) or "throw" (reject when limited)
-   * @returns This builder instance for method chaining
-   */  public withRateLimit(overrides: Partial<SDKConfig["rateLimit"]>): SDKBuilder {
+
+  public withRateLimit(overrides: Partial<SDKConfig["rateLimit"]>): SDKBuilder {
     this.config = {
       ...this.config,
       rateLimit: { ...this.config.rateLimit, ...overrides }
@@ -187,17 +105,6 @@ export class SDKBuilder {
     return this;
   }
 
-  /**
-   * Configures logging for the SDK.
-   * 
-   * Enables console and/or file logging of email events (queued, sent, failed, retrying, bounced).
-   * 
-   * @param overrides - Partial logging configuration
-   * @param overrides.level - Log level: "debug", "info", "warn", or "error"
-   * @param overrides.destinations - Array of destinations: "console" and/or "file"
-   * @param overrides.filePath - File path for file logging (required if "file" is in destinations)
-   * @returns This builder instance for method chaining
-   */
   public withLogging(overrides: Partial<SDKConfig["logging"]>): SDKBuilder {
     this.config = {
       ...this.config,
@@ -206,41 +113,23 @@ export class SDKBuilder {
     return this;
   }
 
-  /**
-   * Sets the template engine for email template compilation and rendering.
-   * 
-   * @param type - Template engine type: "handlebars" or "mustache" (default: "handlebars")
-   * @returns This builder instance for method chaining
-   */
   public withTemplateEngine(type: TemplateEngineType): SDKBuilder {
     this.templateEngineType = type;
     return this;
   }
 
-  /**
-   * Builds and returns a fully configured EmailSDK instance.
-   * 
-   * This method validates the configuration, initializes all components
-   * (providers, queues, workers, loggers, metrics), and returns a ready-to-use SDK.
-   * 
-   * @returns Initialized EmailSDK instance
-   * @throws Error if no providers are configured
-   * 
-   * @example
-   * const sdk = new SDKBuilder()
-   *   .addProvider('sendgrid', { apiKey: '...' })
-   *   .addProvider('smtp', { host: 'localhost', port: 587 })
-   *   .withRetry({ maxAttempts: 5 })
-   *   .withLogging({ destinations: ['console', 'file'], filePath: './logs/email.log' })
-   *   .build();
-   */
+  public withDLQ(options: { persistPath?: string }): SDKBuilder {
+    this.dlqPersistPath = options.persistPath;
+    return this;
+  }
+
   public build(): EmailSDK {
     if (this.providers.length === 0) {
-      throw new Error("At least one provider must be configured");
+      throw new ValidationError("At least one provider must be configured", randomUUID());
     }
 
     const queue = new EmailQueue(this.config.queue.maxSize);
-    const dlq = new DLQHandler();
+    const dlq = new DLQHandler({ persistPath: this.dlqPersistPath });
     const retryPolicy = new RetryPolicy(this.config.retry);
     const breakers = new Map<string, CircuitBreaker>();
     const rateLimiters = new Map<string, RateLimiter>();

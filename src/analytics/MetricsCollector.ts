@@ -55,7 +55,7 @@ export class MetricsCollector {
       this.points.push({
         ts: Date.now(),
         provider: e.provider ?? "unknown",
-        latencyMs: 0,
+        latencyMs: e.latencyMs ?? 0,
         success: true
       });
       this.compact();
@@ -64,7 +64,7 @@ export class MetricsCollector {
       this.points.push({
         ts: Date.now(),
         provider: e.provider ?? "unknown",
-        latencyMs: 0,
+        latencyMs: e.latencyMs ?? 0,
         success: false
       });
       this.compact();
@@ -86,6 +86,7 @@ export class MetricsCollector {
     const byProvider: SDKStats["byProvider"] = {};
     let totalSent = 0;
     let totalFailed = 0;
+    const latencyAgg: Record<string, { sum: number; count: number }> = {};
     for (const point of this.points) {
       const item = byProvider[point.provider] ?? { sent: 0, failed: 0, avgLatencyMs: 0 };
       if (point.success) {
@@ -95,7 +96,18 @@ export class MetricsCollector {
         item.failed += 1;
         totalFailed += 1;
       }
+      const agg = latencyAgg[point.provider] ?? { sum: 0, count: 0 };
+      agg.sum += point.latencyMs;
+      agg.count += 1;
+      latencyAgg[point.provider] = agg;
       byProvider[point.provider] = item;
+    }
+
+    for (const [provider, agg] of Object.entries(latencyAgg)) {
+      const item = byProvider[provider];
+      if (item) {
+        item.avgLatencyMs = agg.count > 0 ? Math.round(agg.sum / agg.count) : 0;
+      }
     }
 
     return {

@@ -1,50 +1,38 @@
 import sendgrid from "@sendgrid/mail";
 import { BaseProvider } from "./BaseProvider";
-import { EmailPayload } from "../types/EmailPayload";
+import { Attachment, EmailPayload } from "../types/EmailPayload";
+import { ProviderHealth } from "../types/ProviderHealth";
 
-/**
- * SendGridProviderConfig - Configuration for SendGrid email provider.
- * 
- * Requires an API key for authentication with SendGrid service.
- */
 export interface SendGridProviderConfig {
-  /** SendGrid API key for authentication */
   apiKey: string;
 }
 
-/**
- * SendGridProvider - Email provider using SendGrid's Mail Send API.
- * 
- * Features:
- * - Highly reliable email delivery
- * - Web UI for templates and campaign management
- * - Detailed analytics and monitoring
- * - Good SLA and deliverability
- * - Global mail server infrastructure
- */
 export class SendGridProvider extends BaseProvider {
-  /**
-   * Constructs a SendGridProvider with API authentication.
-   * 
-   * Sets SendGrid global API key for all future requests.
-   * 
-   * @param config - SendGrid configuration with API key
-   * @param name - Optional provider name (default: "sendgrid")
-   */
   constructor(config: SendGridProviderConfig, name = "sendgrid") {
     super(name);
     sendgrid.setApiKey(config.apiKey);
   }
 
-  /**
-   * Sends an email through SendGrid.
-   * 
-   * Formats payload into SendGrid mail message and sends via API.
-   * Falls back to HTML as text if text content not provided.
-   * 
-   * @param payload - Email payload with recipients, subject, and content
-   * @throws Error if SendGrid API returns error (auth, invalid recipient, etc.)
-   */
+  public override async healthCheck(): Promise<ProviderHealth> {
+    const started = Date.now();
+    try {
+      // Lightweight authenticated request; doesn't send email.
+      await (sendgrid as unknown as { request: (args: unknown) => Promise<unknown> }).request({
+        method: "GET",
+        url: "/v3/user/account"
+      });
+      const latencyMs = Date.now() - started;
+      return {
+        provider: this.name,
+        status: latencyMs > 1000 ? "DEGRADED" : "UP",
+        latencyMs,
+        checkedAt: new Date()
+      };
+    } catch {
+      return { provider: this.name, status: "DOWN", checkedAt: new Date() };
+    }
+  }
+
   protected async doSend(payload: EmailPayload): Promise<void> {
     await sendgrid.send({
       from: payload.from.email,
@@ -53,7 +41,18 @@ export class SendGridProvider extends BaseProvider {
       bcc: payload.bcc?.map((x) => x.email),
       subject: payload.subject,
       html: payload.html,
-      text: payload.text ?? payload.html ?? ""
+      text: payload.text ?? payload.html ?? "",
+      attachments: payload.attachments?.map((a: Attachment) => ({
+        filename: a.filename,
+        type: a.contentType,
+        disposition: "attachment",
+        content:
+          Buffer.isBuffer(a.content)
+            ? a.content.toString("base64")
+            : a.encoding === "base64"
+              ? a.content
+              : Buffer.from(a.content, "utf-8").toString("base64")
+      }))
     });
   }
 }

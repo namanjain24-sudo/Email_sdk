@@ -2,6 +2,7 @@ import { EmailPayload } from "../types/EmailPayload";
 import { EmailStatus } from "../types/EmailStatus";
 import { ProviderHealth } from "../types/ProviderHealth";
 import { SendResult } from "../types/SendResult";
+import { ProviderError } from "../errors/ProviderError";
 
 /**
  * BaseProvider - Abstract base class for email service providers.
@@ -36,16 +37,25 @@ export abstract class BaseProvider {
    */
   public async send(payload: EmailPayload): Promise<SendResult> {
     const startedAt = Date.now();
-    const messageId = payload.id ?? `msg_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    await this.doSend(payload, messageId);
-    return {
-      messageId,
-      provider: this.name,
-      status: EmailStatus.SENT,
-      attempts: 1,
-      latencyMs: Date.now() - startedAt,
-      timestamp: new Date()
-    };
+    const messageId = payload.id;
+    const correlationId = payload.metadata?.correlationId ?? messageId ?? "unknown";
+    if (!messageId) {
+      throw new ProviderError("Missing message id on payload", correlationId, this.name, false, 400);
+    }
+
+    try {
+      await this.doSend(payload, messageId);
+      return {
+        messageId,
+        provider: this.name,
+        status: EmailStatus.SENT,
+        attempts: 1,
+        latencyMs: Date.now() - startedAt,
+        timestamp: new Date()
+      };
+    } catch (error) {
+      throw this.normalizeError(error, correlationId);
+    }
   }
 
   /**
@@ -87,4 +97,29 @@ export abstract class BaseProvider {
    * @throws Error if send fails
    */
   protected abstract doSend(payload: EmailPayload, messageId: string): Promise<void>;
+
+  protected normalizeError(error: unknown, correlationId: string): ProviderError {
+    const message = error instanceof Error ? error.message : "Provider send failed";
+    const statusCode = this.extractStatusCode(error);
+    const retryable =
+      statusCode === undefined ||
+      statusCode === 429 ||
+      (statusCode >= 500 && statusCode <= 599);
+    return new ProviderError(message, correlationId, this.name, retryable, statusCode);
+  }
+
+  private extractStatusCode(error: unknown): number | undefined {
+    if (!error || typeof error !== "object") {
+      return undefined;
+    }
+    const raw = (error as { code?: unknown; statusCode?: unknown }).statusCode ?? (error as { code?: unknown }).code;
+    if (typeof raw === "number") {
+      return raw;
+    }
+    if (typeof raw === "string") {
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    }
+    return undefined;
+  }
 }

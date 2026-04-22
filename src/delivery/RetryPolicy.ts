@@ -1,4 +1,6 @@
 import { RetryConfig } from "../types/SDKConfig";
+import { ProviderError } from "../errors/ProviderError";
+import { RateLimitError } from "../errors/RateLimitError";
 
 /**
  * RetryPolicy - Determines which errors are retryable and calculates retry delays.
@@ -36,6 +38,13 @@ export class RetryPolicy {
   public shouldRetry(error: unknown, attempt: number): boolean {
     if (attempt >= this.config.maxAttempts) {
       return false;
+    }
+
+    if (error instanceof ProviderError) {
+      return error.retryable;
+    }
+    if (error instanceof RateLimitError) {
+      return true;
     }
 
     const code = this.extractCode(error);

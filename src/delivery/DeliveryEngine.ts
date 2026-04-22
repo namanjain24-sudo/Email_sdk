@@ -9,28 +9,12 @@ import { ProviderError } from "../errors/ProviderError";
 import { EmailStatus } from "../types/EmailStatus";
 import { EmailEventEmitter } from "../events/EmailEventEmitter";
 
-/**
- * DeliveryEngine - Orchestrates email delivery with retry logic, fallback providers, and rate limiting.
- * 
- * This class handles the complete delivery process:
- * - Attempts to send using available providers in order
- * - Applies retry policy with exponential backoff
- * - Checks circuit breakers to skip failed providers
- * - Respects rate limits to avoid provider throttling
- * - Emits retry events for tracking
- * 
- * The engine uses a fallback chain to rotate through providers on failure.
- */
+export type DeliveryDecision =
+  | { kind: "sent"; result: SendResult }
+  | { kind: "retry"; delayMs: number; error: unknown; providerName: string }
+  | { kind: "failed"; error: unknown; providerName?: string };
+
 export class DeliveryEngine {
-  /**
-   * Constructs a DeliveryEngine with configured delivery strategies.
-   * 
-   * @param fallbackChain - Chain of providers to try in sequence
-   * @param retryPolicy - Policy determining retry behavior and delays
-   * @param circuitBreakers - Map of circuit breakers per provider for failure isolation
-   * @param rateLimiters - Map of rate limiters per provider
-   * @param eventEmitter - Event emitter for delivery tracking
-   */
   constructor(
     private readonly fallbackChain: FallbackChain,
     private readonly retryPolicy: RetryPolicy,
@@ -39,70 +23,68 @@ export class DeliveryEngine {
     private readonly eventEmitter: EmailEventEmitter
   ) {}
 
-  /**
-   * Attempts to deliver an email with retry and fallback logic.
-   * 
-   * This method:
-   * - Gets available providers from the fallback chain
-   * - For each provider, acquires a rate limit token
-   * - Attempts to send via the provider
-   * - Records success/failure with circuit breaker
-   * - Retries with exponential backoff on failure if allowed
-   * - Emits retrying events
-   * - Throws error after exhausting retries
-   * 
-   * @param job - Queue job containing email payload and retry metadata
-   * @returns Promise resolving to SendResult with delivery status and attempt count
-   * @throws ProviderError if no providers available or all attempts exhausted
-   */
-  public async deliver(job: QueueJob): Promise<SendResult> {
+  public async deliver(job: QueueJob): Promise<DeliveryDecision> {
     const payload: EmailPayload = job.payload;
-    let attempt = job.attempts;
-    let lastError: unknown;
-
-    while (attempt < 100) {
-      const providers = this.fallbackChain.orderedAvailable();
-      if (providers.length === 0) {
-        throw new ProviderError(
-          "No available provider in fallback chain",
-          job.correlationId,
-          "none",
-          true
-        );
+    const providers = this.fallbackChain.orderedAvailable();
+    if (providers.length === 0) {
+      const error = new ProviderError("No available provider in fallback chain", job.correlationId, "none", true);
+      const shouldRetry = this.retryPolicy.shouldRetry(error, job.attempts + 1);
+      if (!shouldRetry) {
+        return { kind: "failed", error, providerName: "none" };
       }
+      return { kind: "retry", delayMs: this.retryPolicy.getDelay(job.attempts), error, providerName: "none" };
+    }
 
-      for (const provider of providers) {
-        const breaker = this.circuitBreakers.get(provider.name);
-        try {
-          await this.rateLimiters.get(provider.name)?.acquire(job.correlationId);
-          const result = await provider.send(payload);
-          breaker?.recordSuccess();
-          return { ...result, attempts: attempt + 1, status: EmailStatus.SENT };
-        } catch (error) {
-          lastError = error;
-          breaker?.recordFailure();
-          const shouldRetry = this.retryPolicy.shouldRetry(error, attempt + 1);
-          if (!shouldRetry) {
-            continue;
-          }
-          const delay = this.retryPolicy.getDelay(attempt);
-          this.eventEmitter.emitRetrying({
-            messageId: job.id,
-            correlationId: job.correlationId,
-            provider: provider.name,
-            status: EmailStatus.RETRYING,
-            attempt: attempt + 1,
-            delayMs: delay,
-            reason: error instanceof Error ? error.message : "Unknown retry error",
-            timestamp: new Date().toISOString()
-          });
-          await new Promise<void>((resolve) => setTimeout(resolve, delay));
-          attempt += 1;
-          break;
+    let lastError: unknown;
+    let lastProvider: string | undefined;
+    let sawRetryableFailure = false;
+
+    for (const provider of providers) {
+      lastProvider = provider.name;
+      const breaker = this.circuitBreakers.get(provider.name);
+      try {
+        if (breaker && !breaker.canRequest()) {
+          continue;
         }
+        await this.rateLimiters.get(provider.name)?.acquire(job.correlationId);
+        const result = await provider.send(payload);
+        breaker?.recordSuccess();
+        return {
+          kind: "sent",
+          result: { ...result, attempts: job.attempts + 1, status: EmailStatus.SENT }
+        };
+      } catch (error) {
+        lastError = error;
+        breaker?.recordFailure();
+
+        // On failure, immediately try next provider (fallback-on-failure).
+        // After exhausting providers, decide whether to re-enqueue based on RetryPolicy/maxAttempts.
+        const shouldRetry = this.retryPolicy.shouldRetry(error, job.attempts + 1);
+        if (shouldRetry) {
+          sawRetryableFailure = true;
+        }
+        continue;
       }
     }
 
-    throw lastError instanceof Error ? lastError : new Error("Delivery failed after retries");
+    if (sawRetryableFailure) {
+      const delayMs = this.retryPolicy.getDelay(job.attempts);
+      this.eventEmitter.emitRetrying({
+        messageId: job.id,
+        correlationId: job.correlationId,
+        provider: lastProvider ?? "unknown",
+        status: EmailStatus.RETRYING,
+        attempt: job.attempts + 1,
+        delayMs,
+        reason: lastError instanceof Error ? lastError.message : "Unknown retry error",
+        timestamp: new Date().toISOString()
+      });
+      const error =
+        lastError ??
+        new ProviderError("Retryable delivery failure", job.correlationId, lastProvider ?? "unknown", true);
+      return { kind: "retry", delayMs, error, providerName: lastProvider ?? "unknown" };
+    }
+
+    return { kind: "failed", error: lastError ?? new ProviderError("Delivery failed", job.correlationId, lastProvider ?? "unknown", false), providerName: lastProvider };
   }
 }

@@ -11,6 +11,8 @@ export interface MockProviderOptions {
   failureRate?: number;
   /** Simulated send latency in milliseconds (default: 30) */
   baseLatencyMs?: number;
+  failFirst?: number;
+  errorCode?: number;
 }
 
 /**
@@ -27,6 +29,8 @@ export interface MockProviderOptions {
 export class MockProvider extends BaseProvider {
   private readonly failureRate: number;
   private readonly baseLatencyMs: number;
+  private failRemaining: number;
+  private readonly errorCode: number;
 
   /**
    * Constructs a MockProvider with optional behavior configuration.
@@ -38,6 +42,8 @@ export class MockProvider extends BaseProvider {
     super(name);
     this.failureRate = options.failureRate ?? 0;
     this.baseLatencyMs = options.baseLatencyMs ?? 30;
+    this.failRemaining = options.failFirst ?? 0;
+    this.errorCode = options.errorCode ?? 503;
   }
 
   /**
@@ -52,10 +58,13 @@ export class MockProvider extends BaseProvider {
    */
   protected async doSend(payload: EmailPayload, messageId: string): Promise<void> {
     await new Promise<void>((resolve) => setTimeout(resolve, this.baseLatencyMs));
-    const fail = Math.random() < this.failureRate;
+    const fail = this.failRemaining > 0 || Math.random() < this.failureRate;
     if (fail) {
+      if (this.failRemaining > 0) {
+        this.failRemaining -= 1;
+      }
       const error = new Error(`Mock provider ${this.name} simulated failure`);
-      (error as { code?: number }).code = 503;
+      (error as { code?: number }).code = this.errorCode;
       throw error;
     }
     void payload;

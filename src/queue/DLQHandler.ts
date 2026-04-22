@@ -1,30 +1,91 @@
+import { writeFileSync, readFileSync, existsSync, mkdirSync } from "fs";
+import { dirname } from "path";
 import { QueueJob } from "./EmailQueue";
 
-/**
- * DLQHandler - Dead Letter Queue for permanently failed email messages.
- * 
- * When an email cannot be delivered after all retry attempts and provider
- * fallbacks are exhausted, it's added to the DLQ for later investigation
- * and potential manual intervention.
- */
+export interface DLQHandlerOptions {
+  /**
+   * Absolute path to a JSON file for persisting failed jobs across restarts.
+   * If omitted the DLQ is purely in-memory (original behaviour).
+   */
+  persistPath?: string;
+}
+
 export class DLQHandler {
   private readonly failedJobs: QueueJob[] = [];
+  private readonly persistPath: string | undefined;
 
-  /**
-   * Adds a failed job to the Dead Letter Queue.
-   * 
-   * @param job - Queue job that failed delivery
-   */
-  public add(job: QueueJob): void {
-    this.failedJobs.push(job);
+  constructor(options: DLQHandlerOptions = {}) {
+    this.persistPath = options.persistPath;
+    if (this.persistPath) {
+      this.loadFromDisk();
+    }
   }
 
-  /**
-   * Returns a copy of all failed jobs in the Dead Letter Queue.
-   * 
-   * @returns Array of failed queue jobs
-   */
+  public add(job: QueueJob): void {
+    this.failedJobs.push(job);
+    if (this.persistPath) {
+      this.flushToDisk();
+    }
+  }
+
   public list(): QueueJob[] {
     return [...this.failedJobs];
+  }
+
+  /** Remove a job from the DLQ by its id (e.g. after manual reprocessing). */
+  public remove(id: string): boolean {
+    const idx = this.failedJobs.findIndex((j) => j.id === id);
+    if (idx === -1) return false;
+    this.failedJobs.splice(idx, 1);
+    if (this.persistPath) {
+      this.flushToDisk();
+    }
+    return true;
+  }
+
+  /** Clear the DLQ entirely. */
+  public clear(): void {
+    this.failedJobs.length = 0;
+    if (this.persistPath) {
+      this.flushToDisk();
+    }
+  }
+
+  public get size(): number {
+    return this.failedJobs.length;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Persistence helpers
+  // ---------------------------------------------------------------------------
+
+  private flushToDisk(): void {
+    try {
+      const dir = dirname(this.persistPath!);
+      if (!existsSync(dir)) {
+        mkdirSync(dir, { recursive: true });
+      }
+      // Serialise – resolve/reject functions cannot be persisted, omit them.
+      const serialisable = this.failedJobs.map(({ resolve: _r, reject: _j, ...rest }) => rest);
+      writeFileSync(this.persistPath!, JSON.stringify(serialisable, null, 2), "utf-8");
+    } catch {
+      // Non-fatal – persistence is best-effort.
+    }
+  }
+
+  private loadFromDisk(): void {
+    try {
+      if (!existsSync(this.persistPath!)) return;
+      const raw = readFileSync(this.persistPath!, "utf-8");
+      const parsed: Omit<QueueJob, "resolve" | "reject">[] = JSON.parse(raw) as never;
+      for (const item of parsed) {
+        this.failedJobs.push({
+          ...item,
+          enqueuedAt: new Date(item.enqueuedAt)
+        });
+      }
+    } catch {
+      // Corrupt file – start fresh.
+    }
   }
 }
