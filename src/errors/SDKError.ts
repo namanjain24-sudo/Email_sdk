@@ -17,7 +17,8 @@ export class SDKError extends Error {
   constructor(
     public readonly code: string,
     message: string,
-    public readonly correlationId: string
+    public readonly correlationId: string,
+    public readonly timestamp: Date = new Date()
   ) {
     super(message);
     this.name = "SDKError";

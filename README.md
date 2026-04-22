@@ -9,6 +9,10 @@ TypeScript Email SDK implementing the mandatory high-level system design concept
 - `npm run example:fallback`
 - `npm run example:bulk`
 
+## Environment
+
+See `.env.example` for provider credentials and SDK settings.
+
 ## System Design Coverage (2.1 - 2.10)
 
 - `2.1 Provider Abstraction`: `IEmailProvider`, `BaseProvider`, `SmtpProvider`, `AwsSesProvider`, `SendGridProvider`, `ProviderRegistry`

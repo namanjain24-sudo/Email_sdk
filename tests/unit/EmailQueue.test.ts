@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { EmailQueue } from "../../src/queue/EmailQueue";
+import { EmailStatus } from "../../src/types/EmailStatus";
 
 describe("EmailQueue", () => {
-  it("dequeues by priority", () => {
+  it("dequeues by priority", async () => {
     const q = new EmailQueue(10);
-    q.enqueue({
+    await q.enqueue({
       id: "1",
       correlationId: "c1",
       payload: {
@@ -15,9 +16,10 @@ describe("EmailQueue", () => {
       },
       attempts: 0,
       enqueuedAt: new Date(),
-      nextRetryAt: Date.now()
+      nextRetryAt: Date.now(),
+      status: EmailStatus.QUEUED
     });
-    q.enqueue({
+    await q.enqueue({
       id: "2",
       correlationId: "c2",
       payload: {
@@ -28,8 +30,9 @@ describe("EmailQueue", () => {
       },
       attempts: 0,
       enqueuedAt: new Date(),
-      nextRetryAt: Date.now()
+      nextRetryAt: Date.now(),
+      status: EmailStatus.QUEUED
     });
-    expect(q.dequeue()?.id).toBe("2");
+    expect((await q.dequeue())?.id).toBe("2");
   });
 });

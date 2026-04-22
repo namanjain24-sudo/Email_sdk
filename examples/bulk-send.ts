@@ -8,10 +8,8 @@ async function main(): Promise<void> {
     to: [{ email: `user${index}@example.com` }],
     subject: `Bulk #${index + 1}`
   }));
-  const queued = await sdk.sendBulk(payloads);
-  console.log("Queued:", queued.length);
-
-  await new Promise((r) => setTimeout(r, 1500));
+  const results = await sdk.sendBulk(payloads);
+  console.log("Sent:", results.length);
   console.log("Stats:", sdk.getStats());
   await sdk.shutdown();
 }
