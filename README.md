@@ -149,14 +149,18 @@ TEMPLATES
 ```
 
 System Architecture Diagram :
-
 <img width="473" height="862" alt="Screenshot 2026-04-09 at 12 06 11 PM" src="https://github.com/user-attachments/assets/fce5784f-ad7d-4c33-81ba-0ec0b605d298" />
-
 
 use case diag
 <img width="1406" height="1498" alt="image" src="https://github.com/user-attachments/assets/76115d08-d478-4b23-a3f3-a1519f9e4ce9" />
 
-
 UML Sequence Diagram
-
 <img width="926" height="812" alt="Screenshot 2026-04-10 at 11 38 39 AM" src="https://github.com/user-attachments/assets/252f8397-9032-4b97-a25d-4ddbac4ff84d" />
+
+
+UML Activity Diagram — Email Send Flow
+<img width="3153" height="8192" alt="Email Sending Workflow with-2026-04-25-231014" src="https://github.com/user-attachments/assets/072c6648-06ea-47a9-b6e9-0120cf57c7a8" />
+
+
+UML Class Diagram — System Structure
+<img width="8192" height="6545" alt="Email Sending Workflow with-2026-04-25-231125" src="https://github.com/user-attachments/assets/3a25bd2d-acd7-4b25-b391-2d7ba3b66257" />
