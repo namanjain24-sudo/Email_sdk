@@ -149,7 +149,7 @@ TEMPLATES
 ```
 
 System Architecture Diagram :
-<img width="473" height="862" alt="Screenshot 2026-04-09 at 12 06 11 PM" src="https://github.com/user-attachments/assets/fce5784f-ad7d-4c33-81ba-0ec0b605d298" />
+<img width="5246" height="8192" alt="Email SDK Delivery Pipeline-2026-04-28-193910" src="https://github.com/user-attachments/assets/822f2803-e1b5-454c-b475-f297bdbd3835" />" 
 
 use case diag
 <img width="1406" height="1498" alt="image" src="https://github.com/user-attachments/assets/76115d08-d478-4b23-a3f3-a1519f9e4ce9" />
