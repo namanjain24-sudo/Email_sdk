@@ -152,10 +152,11 @@ System Architecture Diagram :
 <img width="5246" height="8192" alt="Email SDK Delivery Pipeline-2026-04-28-193910" src="https://github.com/user-attachments/assets/822f2803-e1b5-454c-b475-f297bdbd3835" />" 
 
 use case diag
-<img width="1406" height="1498" alt="image" src="https://github.com/user-attachments/assets/76115d08-d478-4b23-a3f3-a1519f9e4ce9" />
+<img width="537" height="601" alt="Screenshot 2026-04-29 at 9 01 44 AM" src="https://github.com/user-attachments/assets/632f7b05-ef9c-43d1-b9cc-bb54bc8b2a8b" />
 
 UML Sequence Diagram
-<img width="926" height="812" alt="Screenshot 2026-04-10 at 11 38 39 AM" src="https://github.com/user-attachments/assets/252f8397-9032-4b97-a25d-4ddbac4ff84d" />
+<img width="1280" height="891" alt="image" src="https://github.com/user-attachments/assets/16a1065f-e9ed-4990-a545-84e2caadebfc" />
+
 
 
 UML Activity Diagram — Email Send Flow
